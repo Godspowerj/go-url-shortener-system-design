@@ -12,12 +12,12 @@ import (
 
 // URLHandler holds the store (database) and handles all URL-related HTTP requests.
 type URLHandler struct {
-	store *store.MemoryStore
+	store store.Store
 }
 
 // NewURLHandler creates a new URLHandler wired to the given store.
-func NewURLHandler(memoryStore *store.MemoryStore) *URLHandler {
-	return &URLHandler{store: memoryStore}
+func NewURLHandler(s store.Store) *URLHandler {
+	return &URLHandler{store: s}
 }
 
 // Shorten handles POST /shorten.
@@ -44,7 +44,10 @@ func (h *URLHandler) Shorten(response http.ResponseWriter, request *http.Request
 		OriginalURL: requestBody.URL,
 		CreatedAt:   time.Now(),
 	}
-	h.store.Save(shortCode, newEntry)
+	if err := h.store.Save(shortCode, newEntry); err != nil {
+		http.Error(response, `{"error": "failed to save URL"}`, http.StatusInternalServerError)
+		return
+	}
 
 	// Build and send the JSON response
 	responseData := map[string]string{

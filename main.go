@@ -18,9 +18,9 @@ func main() {
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	// Create the in-memory database and wire it into the handler
-	memoryStore := store.NewMemoryStore()
-	urlHandler := handler.NewURLHandler(memoryStore)
+	// Create the SQLite store — data is saved to urls.db in the current directory
+	sqliteStore := store.NewSQLiteStore("urls.db")
+	urlHandler := handler.NewURLHandler(sqliteStore)
 
 	// Register routes: path + HTTP method → handler function
 	router.Post("/shorten", urlHandler.Shorten)  // POST /shorten  → Shorten()
