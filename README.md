@@ -16,19 +16,19 @@ This project grows one version at a time. Each version introduces new concepts a
 
 ```mermaid
 graph LR
-    Client["Client\n(curl / browser)"]
-    API["Go API\n:8080"]
-    Store["SQLite Store\n(urls.db on disk)"]
+    Client["Client - curl or browser"]
+    API["Go API :8080"]
+    Store["SQLite Store - urls.db"]
 
-    Client -->|"POST /shorten\n{url: '...'}"|  API
-    API -->|"Save short code"| Store
-    Store -->|"OK"| API
-    API -->|"short_code + short_url"| Client
+    Client -->|POST /shorten| API
+    API -->|Save short code| Store
+    Store -->|OK| API
+    API -->|short_code + short_url| Client
 
-    Client -->|"GET /{code}"| API
-    API -->|"Look up code"| Store
-    Store -->|"Original URL"| API
-    API -->|"302 Redirect"| Client
+    Client -->|GET /code| API
+    API -->|Look up code| Store
+    Store -->|Original URL| API
+    API -->|302 Redirect| Client
 ```
 
 ---
@@ -53,14 +53,14 @@ sequenceDiagram
     participant Gen as shortener/generate.go
     participant Store as store/sqlite.go
 
-    Client->>Router: POST /shorten {"url": "https://youtube.com"}
+    Client->>Router: POST /shorten url=https://youtube.com
     Router->>Handler: Shorten()
     Handler->>Handler: decode JSON body
     Handler->>Gen: GenerateCode(6)
-    Gen-->>Handler: "xK92pQ"
-    Handler->>Store: Save("xK92pQ", URL entry)
-    Store-->>Handler: saved ✓
-    Handler-->>Client: 201 {"short_code":"xK92pQ", "short_url":"http://localhost:8080/xK92pQ"}
+    Gen-->>Handler: xK92pQ
+    Handler->>Store: Save(xK92pQ, URL entry)
+    Store-->>Handler: saved
+    Handler-->>Client: 201 short_code=xK92pQ
 ```
 
 ---
@@ -76,13 +76,13 @@ sequenceDiagram
 
     Client->>Router: GET /xK92pQ
     Router->>Handler: Redirect()
-    Handler->>Store: Get("xK92pQ")
+    Handler->>Store: Get(xK92pQ)
     alt Short code found
-        Store-->>Handler: {OriginalURL: "https://youtube.com"}
-        Handler-->>Client: 302 → https://youtube.com
+        Store-->>Handler: OriginalURL = https://youtube.com
+        Handler-->>Client: 302 redirect to original URL
     else Short code not found
         Store-->>Handler: exists = false
-        Handler-->>Client: 404 {"error": "short URL not found"}
+        Handler-->>Client: 404 short URL not found
     end
 ```
 
@@ -115,17 +115,17 @@ url-shortener/
 
 ```mermaid
 graph TD
-    main["main.go\nwires everything together"]
-    handler["handler/url.go\nHTTP layer"]
-    shortener["shortener/generate.go\ncreates short codes"]
-    storeInterface["store/store.go\nStore interface"]
-    sqlite["store/sqlite.go\nSQLite storage layer"]
+    main["main.go - wires everything"]
+    handler["handler/url.go - HTTP layer"]
+    shortener["shortener/generate.go - short codes"]
+    storeInterface["store/store.go - Store interface"]
+    sqlite["store/sqlite.go - SQLite storage"]
 
-    main -->|"creates SQLiteStore, passes to handler"| handler
-    main -->|"creates"| sqlite
-    sqlite -->|"implements"| storeInterface
-    handler -->|"calls GenerateCode()"| shortener
-    handler -->|"calls Save / Get / GetAll"| storeInterface
+    main -->|creates and passes store| handler
+    main -->|creates| sqlite
+    sqlite -->|implements| storeInterface
+    handler -->|calls GenerateCode| shortener
+    handler -->|calls Save / Get / GetAll| storeInterface
 ```
 
 ---
