@@ -1,29 +1,58 @@
 # Benchmark: v2 SQLite Persistence Under Load
 
-- **Date:** 2026-07-06
+- **Date:** 2026-07-07
 - **Storage Backend:** SQLite (`modernc.org/sqlite` pure-Go driver)
 - **Environment:** Localhost, Single Process API server
 
-## Load Test Configuration
+---
+
+## Benchmark 1: SQLite (Default Configuration) - *Before Tuning*
+
+### Load Test Configuration
 - **Total Requests:** 1,000 (HTTP `POST /shorten`)
 - **Concurrency:** 20 concurrent workers
 
-## Results
+### Results
 - **Successful Requests:** 15 / 1,000 (1.5%)
 - **Failed Requests:** 985 / 1,000 (98.5%)
 - **Throughput:** ~125.72 req/sec (RPS)
 - **Average Latency:** 153.82 ms
 
-## Analysis & Diagnostic
-The load test revealed a massive failure rate (98.5% of requests returned `500 Internal Server Error`).
+### Analysis & Diagnostic
+SQLite defaulted to synchronous file-locking. Concurrent writes collided, causing a `"database is locked"` SQL error. 98.5% of requests returned `500 Internal Server Error`.
 
-Looking at the server logs, we confirmed that under concurrent load, multiple threads attempted to write (`INSERT`) into the SQLite database file at the exact same millisecond. Since SQLite by default locks the entire file during database writes, these concurrent requests conflicted, returning a `"database is locked"` SQL error. Go returned `500` status codes for those failed saves.
+---
 
-### Key Bottleneck Identified
-- **Write Concurrency Limit:** SQLite's single-writer architecture cannot handle high-concurrency writes without tuning (e.g. enabling WAL mode, setting busy timeouts, or using single-writer worker queues).
+## Benchmark 2: SQLite (WAL Mode + 5s Timeout) - *Tuned (100 Concurrency)*
 
-## Next Action
-To resolve this bottleneck in the future, we need to:
-1. Try enabling **WAL (Write-Ahead Logging)** mode in SQLite, which allows concurrent readers while one writer is writing.
-2. Configure a **busy timeout** connection parameter so SQLite waits a small duration for the lock to release instead of failing immediately.
-3. Eventually introduce **Redis Caching** (for reads) or switch to a production-grade client-server database like **PostgreSQL** to scale writes.
+### Load Test Configuration
+- **Total Requests:** 1,000 (HTTP `POST /shorten`)
+- **Concurrency:** 100 concurrent workers
+
+### Results
+- **Successful Requests:** 1,000 / 1,000 (100%)
+- **Failed Requests:** 0 / 1,000 (0%)
+- **Throughput:** ~258.31 req/sec (RPS)
+- **Average Latency:** 343.83 ms
+
+---
+
+## Benchmark 3: SQLite (WAL Mode + 5s Timeout) - *Tuned (200 Concurrency)*
+
+### Load Test Configuration
+- **Total Requests:** 1,000 (HTTP `POST /shorten`)
+- **Concurrency:** 200 concurrent workers
+
+### Results
+- **Successful Requests:** 1,000 / 1,000 (100%)
+- **Failed Requests:** 0 / 1,000 (0%)
+- **Throughput:** ~278.10 req/sec (RPS)
+- **Average Latency:** 604.11 ms
+
+---
+
+## Summary Analysis
+Tuning SQLite with `journal_mode(WAL)` and `busy_timeout(5000)` completely resolved our write failures:
+*   **Errors dropped to 0%** even under 200 concurrent connections.
+*   **Throughput doubled** from ~125 RPS to ~278 RPS.
+*   **Latency Trade-off:** Average latency increased under 200 concurrency (604.11 ms) because requests are safely queuing up inside SQLite's write lock rather than failing immediately. This is our target bottleneck for future optimization (Redis/PostgreSQL).
