@@ -5,23 +5,25 @@ import (
 	"log"
 	"time"
 
-	_ "modernc.org/sqlite" // registers the sqlite driver
+	_ "modernc.org/sqlite"
 )
 
-// SQLiteStore is a persistent store backed by a SQLite database file.
+// SQLiteStore is the struct box that holds our active database connection pointer.
 type SQLiteStore struct {
 	db *sql.DB
 }
 
-// NewSQLiteStore opens (or creates) a SQLite database at the given file path,
-// creates the urls table if it doesn't exist, and returns the store.
+// NewSQLiteStore opens the DB file and prepares it.
 func NewSQLiteStore(dbPath string) *SQLiteStore {
-	db, err := sql.Open("sqlite", dbPath)
+	// file: prefix is required so the driver parses query parameters.
+	// WAL mode and busy_timeout allow concurrent readers and prevent database lock errors under load.
+	dsn := "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+	
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatalf("failed to open sqlite database: %v", err)
 	}
 
-	// Create the urls table if it doesn't already exist
 	createTable := `
 	CREATE TABLE IF NOT EXISTS urls (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,10 +36,11 @@ func NewSQLiteStore(dbPath string) *SQLiteStore {
 		log.Fatalf("failed to create urls table: %v", err)
 	}
 
+	// Pack the connection into our SQLiteStore box and return it.
 	return &SQLiteStore{db: db}
 }
 
-// Save inserts a new URL entry into the database.
+// Save inserts a new shortened URL mapping into the database.
 func (s *SQLiteStore) Save(shortCode string, url URL) error {
 	_, err := s.db.Exec(
 		`INSERT INTO urls (short_code, original_url, created_at) VALUES (?, ?, ?)`,
@@ -46,8 +49,7 @@ func (s *SQLiteStore) Save(shortCode string, url URL) error {
 	return err
 }
 
-// Get looks up a URL by its short code.
-// Returns the URL entry and true if found, or an empty URL and false if not found.
+// Get finds a shortened URL using the short code.
 func (s *SQLiteStore) Get(shortCode string) (URL, bool) {
 	row := s.db.QueryRow(
 		`SELECT id, short_code, original_url, created_at FROM urls WHERE short_code = ?`,
@@ -64,7 +66,7 @@ func (s *SQLiteStore) Get(shortCode string) (URL, bool) {
 	return u, true
 }
 
-// GetAll returns all stored URL entries.
+// GetAll returns all saved links, sorted newest first.
 func (s *SQLiteStore) GetAll() []URL {
 	rows, err := s.db.Query(
 		`SELECT id, short_code, original_url, created_at FROM urls ORDER BY id DESC`,

@@ -11,27 +11,29 @@ import (
 )
 
 func main() {
-	// Create the router (traffic controller for incoming requests)
+	// 1. Setup the web router
 	router := chi.NewRouter()
 
-	// Middleware: logs every request and recovers from panics
+	// 2. Add logging middleware so we can watch incoming requests in the terminal
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	// Create the SQLite store — data is saved to urls.db in the current directory
+	// 3. Initialize SQLite (this returns the box holding the database connection)
 	sqliteStore := store.NewSQLiteStore("urls.db")
+
+	// 4. Pass the database box to the handler so the endpoints can use it
 	urlHandler := handler.NewURLHandler(sqliteStore)
 
-	// Register routes: path + HTTP method → handler function
-	router.Post("/shorten", urlHandler.Shorten)  // POST /shorten  → Shorten()
-	router.Get("/urls", urlHandler.ListURLs)     // GET  /urls     → ListURLs()
-	router.Get("/{code}", urlHandler.Redirect)   // GET  /{code}   → Redirect()
+	// 5. Define HTTP endpoints
+	router.Post("/shorten", urlHandler.Shorten)
+	router.Get("/urls", urlHandler.ListURLs)
+	router.Get("/{code}", urlHandler.Redirect)
 
 	fmt.Println("🚀 URL Shortener running on http://localhost:8080")
 	fmt.Println("   POST /shorten     → shorten a URL")
 	fmt.Println("   GET  /{code}      → redirect to original URL")
 	fmt.Println("   GET  /urls        → list all URLs")
 
-	// Start the server — this blocks forever, waiting for requests
+	// 6. Start the server
 	http.ListenAndServe(":8080", router)
 }

@@ -10,8 +10,8 @@ type URL struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Store is the interface that any storage backend must implement.
-// This allows us to swap between MemoryStore and SQLiteStore easily.
+// Store is the interface that decouples our HTTP layer from our database.
+// As long as a database struct has these 3 methods, handler.go can use it.
 type Store interface {
 	Save(shortCode string, url URL) error
 	Get(shortCode string) (URL, bool)
