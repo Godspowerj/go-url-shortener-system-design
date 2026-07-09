@@ -17,12 +17,19 @@ type URLService interface {
 }
 
 type urlService struct {
-	store store.Store
+	store       store.Store
+	clicksQueue chan int
 }
 
 // NewURLService creates a new instance of our business logic service.
 func NewURLService(s store.Store) URLService {
-	return &urlService{store: s}
+	svc := &urlService{
+		store:       s,
+		clicksQueue: make(chan int, 10000),
+	}
+	// Start the asynchronous background worker
+	go svc.worker()
+	return svc
 }
 
 // ShortenURL handles validating a URL, generating a unique short code, and saving the entry.
@@ -52,14 +59,13 @@ func (s *urlService) ResolveURL(shortCode string) (store.URL, error) {
 		return store.URL{}, errors.New("short URL not found")
 	}
 
-	// Increment the click count in the database
-	if err := s.store.Update(foundURL.Id, foundURL.ClickCount+1); err != nil {
-		log.Println("failed to increment click count:", err)
+	// Push the click event to the channel asynchronously (non-blocking)
+	select {
+	case s.clicksQueue <- foundURL.Id:
+	default:
+		log.Println("warning: clicks queue is full, dropping click update for ID:", foundURL.Id)
 	}
-
-	// Update the field in our returned struct as well, so it reflects the click count update
-	foundURL.ClickCount++
-
+	
 	return foundURL, nil
 }
 
@@ -67,4 +73,13 @@ func (s *urlService) ResolveURL(shortCode string) (store.URL, error) {
 func (s *urlService) ListURLs() ([]store.URL, error) {
 	allURLs := s.store.GetAll()
 	return allURLs, nil
+}
+
+// worker runs in the background, consuming URL IDs and executing SQLite updates sequentially.
+func (s *urlService) worker() {
+	for id := range s.clicksQueue {
+		if err := s.store.IncrementClick(id); err != nil {
+			log.Println("failed to increment click count in background:", err)
+		}
+	}
 }

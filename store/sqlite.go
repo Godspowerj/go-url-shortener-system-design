@@ -73,9 +73,9 @@ func (s *SQLiteStore) Get(shortCode string) (URL, bool) {
 	return u, true
 }
 
-// Update updates the click count of a URL entry by ID.
-func (s *SQLiteStore) Update(id int, clickCount int) error {
-	_, err := s.db.Exec(`UPDATE urls SET click_count = ? WHERE id = ?`, clickCount, id)
+// IncrementClick increments the click count of a URL entry by ID atomically.
+func (s *SQLiteStore) IncrementClick(id int) error {
+	_, err := s.db.Exec(`UPDATE urls SET click_count = click_count + 1 WHERE id = ?`, id)
 	return err
 }
 

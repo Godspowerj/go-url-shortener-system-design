@@ -16,6 +16,6 @@ type URL struct {
 type Store interface {
 	Save(shortCode string, url URL) error
 	Get(shortCode string) (URL, bool)
-	Update(id int, clickCount int) error
+	IncrementClick(id int) error
 	GetAll() []URL
 }
