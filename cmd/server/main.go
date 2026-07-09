@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/godspowerjonah/url-shortener/handler"
+	"github.com/godspowerjonah/url-shortener/service"
 	"github.com/godspowerjonah/url-shortener/store"
 )
 
@@ -21,10 +22,13 @@ func main() {
 	// 3. Initialize SQLite (this returns the box holding the database connection)
 	sqliteStore := store.NewSQLiteStore("urls.db")
 
-	// 4. Pass the database box to the handler so the endpoints can use it
-	urlHandler := handler.NewURLHandler(sqliteStore)
+	// 4. Initialize URL service and inject database store
+	urlService := service.NewURLService(sqliteStore)
 
-	// 5. Define HTTP endpoints
+	// 5. Pass the service to the handler so the endpoints can use it
+	urlHandler := handler.NewURLHandler(urlService)
+
+	// 6. Define HTTP endpoints
 	router.Post("/shorten", urlHandler.Shorten)
 	router.Get("/urls", urlHandler.ListURLs)
 	router.Get("/{code}", urlHandler.Redirect)
@@ -34,6 +38,6 @@ func main() {
 	fmt.Println("   GET  /{code}      → redirect to original URL")
 	fmt.Println("   GET  /urls        → list all URLs")
 
-	// 6. Start the server
+	// 7. Start the server
 	http.ListenAndServe(":8080", router)
 }

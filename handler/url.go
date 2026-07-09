@@ -3,20 +3,19 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/godspowerjonah/url-shortener/shortener"
-	"github.com/godspowerjonah/url-shortener/store"
+	"github.com/godspowerjonah/url-shortener/service"
 )
 
-// URLHandler maps incoming HTTP requests to our database store operations.
+// URLHandler maps incoming HTTP requests to our service layer operations.
 type URLHandler struct {
-	store store.Store
+	service service.URLService
 }
 
-func NewURLHandler(s store.Store) *URLHandler {
-	return &URLHandler{store: s}
+// NewURLHandler creates a new handler instance injected with our service.
+func NewURLHandler(s service.URLService) *URLHandler {
+	return &URLHandler{service: s}
 }
 
 // Shorten creates a shortened URL from a JSON payload and saves it.
@@ -30,23 +29,16 @@ func (h *URLHandler) Shorten(response http.ResponseWriter, request *http.Request
 		return
 	}
 
-	shortCode := shortener.GenerateCode(6)
-	newEntry := store.URL{
-		ShortCode:   shortCode,
-		OriginalURL: requestBody.URL,
-		CreatedAt:   time.Now(),
-	}
-
-	// Save to our decoupled database store
-	if err := h.store.Save(shortCode, newEntry); err != nil {
+	newEntry, err := h.service.ShortenURL(requestBody.URL)
+	if err != nil {
 		http.Error(response, `{"error": "failed to save URL"}`, http.StatusInternalServerError)
 		return
 	}
 
 	responseData := map[string]string{
-		"short_code": shortCode,
-		"short_url":  "http://localhost:8080/" + shortCode,
-		"original":   requestBody.URL,
+		"short_code": newEntry.ShortCode,
+		"short_url":  "http://localhost:8080/" + newEntry.ShortCode,
+		"original":   newEntry.OriginalURL,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -58,8 +50,8 @@ func (h *URLHandler) Shorten(response http.ResponseWriter, request *http.Request
 func (h *URLHandler) Redirect(response http.ResponseWriter, request *http.Request) {
 	shortCode := chi.URLParam(request, "code")
 
-	foundURL, exists := h.store.Get(shortCode)
-	if !exists {
+	foundURL, err := h.service.ResolveURL(shortCode)
+	if err != nil {
 		http.Error(response, `{"error": "short URL not found"}`, http.StatusNotFound)
 		return
 	}
@@ -69,7 +61,11 @@ func (h *URLHandler) Redirect(response http.ResponseWriter, request *http.Reques
 
 // ListURLs lists all saved links in JSON format.
 func (h *URLHandler) ListURLs(response http.ResponseWriter, request *http.Request) {
-	allURLs := h.store.GetAll()
+	allURLs, err := h.service.ListURLs()
+	if err != nil {
+		http.Error(response, `{"error": "failed to list URLs"}`, http.StatusInternalServerError)
+		return
+	}
 	response.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(response).Encode(allURLs)
 }

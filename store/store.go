@@ -7,6 +7,7 @@ type URL struct {
 	Id          int       `json:"id"`
 	ShortCode   string    `json:"short_code"`
 	OriginalURL string    `json:"original_url"`
+	ClickCount  int       `json:"click_count"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -15,5 +16,6 @@ type URL struct {
 type Store interface {
 	Save(shortCode string, url URL) error
 	Get(shortCode string) (URL, bool)
+	Update(id int, clickCount int) error
 	GetAll() []URL
 }

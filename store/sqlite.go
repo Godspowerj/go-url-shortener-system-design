@@ -29,12 +29,16 @@ func NewSQLiteStore(dbPath string) *SQLiteStore {
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		short_code  TEXT NOT NULL UNIQUE,
 		original_url TEXT NOT NULL,
+		click_count INTEGER DEFAULT 0,
 		created_at  DATETIME NOT NULL
 	);`
 
 	if _, err = db.Exec(createTable); err != nil {
 		log.Fatalf("failed to create urls table: %v", err)
 	}
+
+	// Add click_count column if it is missing from a previously created table
+	_, _ = db.Exec(`ALTER TABLE urls ADD COLUMN click_count INTEGER DEFAULT 0`)
 
 	// Pack the connection into our SQLiteStore box and return it.
 	return &SQLiteStore{db: db}
@@ -52,13 +56,16 @@ func (s *SQLiteStore) Save(shortCode string, url URL) error {
 // Get finds a shortened URL using the short code.
 func (s *SQLiteStore) Get(shortCode string) (URL, bool) {
 	row := s.db.QueryRow(
-		`SELECT id, short_code, original_url, created_at FROM urls WHERE short_code = ?`,
+		`SELECT id, short_code, original_url, click_count, created_at FROM urls WHERE short_code = ?`,
 		shortCode,
 	)
 
 	var u URL
 	var createdAtStr string
-	if err := row.Scan(&u.Id, &u.ShortCode, &u.OriginalURL, &createdAtStr); err != nil {
+	if err := row.Scan(&u.Id, &u.ShortCode, &u.OriginalURL, &u.ClickCount, &createdAtStr); err != nil {
+		if err != sql.ErrNoRows {
+			log.Println("Get URL error:", err)
+		}
 		return URL{}, false
 	}
 
@@ -66,12 +73,19 @@ func (s *SQLiteStore) Get(shortCode string) (URL, bool) {
 	return u, true
 }
 
+// Update updates the click count of a URL entry by ID.
+func (s *SQLiteStore) Update(id int, clickCount int) error {
+	_, err := s.db.Exec(`UPDATE urls SET click_count = ? WHERE id = ?`, clickCount, id)
+	return err
+}
+
 // GetAll returns all saved links, sorted newest first.
 func (s *SQLiteStore) GetAll() []URL {
 	rows, err := s.db.Query(
-		`SELECT id, short_code, original_url, created_at FROM urls ORDER BY id DESC`,
+		`SELECT id, short_code, original_url, click_count, created_at FROM urls ORDER BY id DESC`,
 	)
 	if err != nil {
+		log.Println("GetAll query error:", err)
 		return nil
 	}
 	defer rows.Close()
@@ -80,7 +94,8 @@ func (s *SQLiteStore) GetAll() []URL {
 	for rows.Next() {
 		var u URL
 		var createdAtStr string
-		if err := rows.Scan(&u.Id, &u.ShortCode, &u.OriginalURL, &createdAtStr); err != nil {
+		if err := rows.Scan(&u.Id, &u.ShortCode, &u.OriginalURL, &u.ClickCount, &createdAtStr); err != nil {
+			log.Println("GetAll scan error:", err)
 			continue
 		}
 		u.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
