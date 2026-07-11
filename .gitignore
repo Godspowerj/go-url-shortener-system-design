@@ -30,3 +30,7 @@ go.work.sum
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal CV Notes & Roadmap
+resume_bullets.md
+.env

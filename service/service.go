@@ -16,15 +16,20 @@ type URLService interface {
 	ListURLs() ([]store.URL, error)
 }
 
+
+// urlService implements the URLService interface, orchestrating the SQLite database
+// store, Redis caching layer, and a channel for processing click events asynchronously.
 type urlService struct {
-	store       store.Store
-	clicksQueue chan int
+	store       store.Store       // Persistent store for short link data
+	redis       *store.RedisStore // Cache store for high-performance retrieval
+	clicksQueue chan int          // Background queue to buffer click increment writes
 }
 
 // NewURLService creates a new instance of our business logic service.
-func NewURLService(s store.Store) URLService {
+func NewURLService(s store.Store, r *store.RedisStore) URLService {
 	svc := &urlService{
 		store:       s,
+		redis:       r,
 		clicksQueue: make(chan int, 10000),
 	}
 	// Start the asynchronous background worker
